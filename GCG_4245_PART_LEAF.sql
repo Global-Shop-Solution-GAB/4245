@@ -1,0 +1,6 @@
+CREATE TABLE "GCG_4245_PART_LEAF"(
+ "AutoNum" IDENTITY DEFAULT '0',
+ "Parent" CHAR(20),
+ "Level" INTEGER,
+ "Part" CHAR(20),
+ UNIQUE ("AutoNum"));
