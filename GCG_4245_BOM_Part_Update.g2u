@@ -1,0 +1,438 @@
+Program.Sub.ScreenSU.Start
+Gui.Form1..Create
+Gui.Form1..Caption("BOM to Inventory for Purchsed and Consigned")
+Gui.Form1..Size(7830,2715)
+Gui.Form1..MinX(0)
+Gui.Form1..MinY(0)
+Gui.Form1..Position(0,0)
+Gui.Form1..BackColor(-2147483633)
+Gui.Form1..MousePointer(0)
+Gui.Form1..Event(UnLoad,Unload)
+Gui.Form1.lbl1.Create(Label,"Bill of Material",True,1935,255,0,435,405,True,0,"Arial",8,-2147483633,0)
+Gui.Form1.txtBom.Create(TextBox,"",True,2010,300,0,435,660,True,0,"Arial",8,-2147483643,1)
+Gui.Form1.lbl2.Create(Label,"Rev",True,555,255,0,2610,405,True,0,"Arial",8,-2147483633,0)
+Gui.Form1.txtSuffix.Create(TextBox,"",True,495,300,0,2610,660,True,0,"Arial",8,-2147483643,1)
+Gui.Form1.cmdBrowser.Create(Button)
+Gui.Form1.cmdBrowser.Size(420,330)
+Gui.Form1.cmdBrowser.Position(3195,645)
+Gui.Form1.cmdBrowser.Caption("^")
+Gui.Form1.cmdBrowser.Event(Click,cmdBrowser_Click)
+Gui.Form1.lbl3.Create(Label,"Description",True,1935,255,0,3930,345,True,0,"Arial",8,-2147483633,0)
+Gui.Form1.txtDesc.Create(TextBox,"",True,3240,300,0,3930,660,False,0,"Arial",8,-2147483643,1)
+Gui.Form1.cmdProcess.Create(Button)
+Gui.Form1.cmdProcess.Size(1185,375)
+Gui.Form1.cmdProcess.Position(435,1530)
+Gui.Form1.cmdProcess.Caption("Process")
+Gui.Form1.cmdProcess.Event(Click,cmdProcess_Click)
+Gui.Form..Create
+Gui.Form..Caption("Part Data Missing")
+Gui.Form..Size(9750,7965)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..ControlBox(True)
+Gui.Form..MousePointer(0)
+Gui.Form..Event(UnLoad,Unload)
+Gui.Form.cmdUpdate.Create(Button)
+Gui.Form.cmdUpdate.Size(855,375)
+Gui.Form.cmdUpdate.Position(360,6720)
+Gui.Form.cmdUpdate.Caption("Update")
+Gui.Form.cmdUpdate.Event(Click,cmd1_Click)
+Gui.Form.GsGcMissing.Create(GsGridControl)
+Gui.Form.GsGcMissing.Size(9345,6285)
+Gui.Form.GsGcMissing.Position(75,300)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+
+
+'F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'Created by TEAM SKYNET in the Custom Department on 12/6/2016
+'For FABCon Quote: 8303   ARC: 4303
+'Custom Menu Item: Bill of Material -> File -> Inventory Parts from BOM 
+v.Local.sSql.Declare(String)
+'This will be a custom Menu item that will allow the user to select a Bill of Material Part. Once the Part is selected a check will be done for all Parts within that Bill of Material where the Part number does not match the 
+'Parent Part Number, and the Source is either Purchased or Consigned. Then these parts will have Inventory records created if they do not already exists.  
+'The screen will allow for the Selection of a Bill of Material and a Process button. Once a Valid Bill of Material is selected the process button will perform the following functionality. 
+'Check to see if the Parent Part Number is not equal to the Part Number on the bill of material, and that the Source is either Purchased or Consigned. 
+'If the above is true then Check to see if the Part number exists in Inventory. If the part does not exist then it will be added to Inventory.
+
+F.ODBC.Connection!Conx.OpenConnection(v.Ambient.PDSN, v.Ambient.PUser, v.Ambient.PPass)
+v.Local.sSql.Set("Select Router,Description_Router,Prod_Line, UM_Inventory, Price_Current From v_Router_Header Where Router = '' and SIMILAR = ''")
+F.Data.DataTable.CreateFromSQL("PartUpdate", "Conx", v.Local.sSql, True)
+F.Data.DataTable.AddColumn("PartUpdate", "Missing", "String")
+Gui.Form1..Show
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4245_BOM_Part_Update.g2c",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.ODBC.Connection!Conx.Close
+f.Intrinsic.Control.End
+
+Program.Sub.Unload.End
+
+Program.Sub.cmdProcess_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdProcess_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'need to do the compare for parts and update inventory master here
+v.Local..BulkDeclareString(sSql,sGssPart, sChildren, sChildrenPool)
+v.Local.iCounter.Declare(long)
+
+Gui.Form1..Visible(False)
+
+
+'BN added Feb, 2017 (custom table should be added with sql: CREATE TABLE "GCG_4125_PART_LEAF"( "AutoNum" IDENTITY DEFAULT '0', "Parent" CHAR(20), "Level" INTEGER, "Part" CHAR(20), UNIQUE ("AutoNum"));)
+
+'Read BOM_MSTR for all sequence_BOM != 0000 and Source = "P" or "J" or "C" or "G"
+F.Intrinsic.String.GSSPartString(v.Screen.Form1!txtBom.Text, v.Screen.Form1!txtSuffix.Text, v.Local.sGssPart)
+
+f.Intrinsic.Control.CallSub(explode_bom,"sBom",v.Local.sGssPart)
+v.Local.sSql.Set( "select distinct part from GCG_4245_PART_LEAF where part != ''")
+f.ODBC.Connection!Conx.ExecuteAndReturn(v.Local.sSql,v.Local.sChildren)
+f.Intrinsic.String.Replace(v.Local.sChildren,"*!*","",v.Local.sChildren)
+f.Intrinsic.String.Split(v.Local.sChildren.Trim,"#$#",v.Local.sChildren)
+
+
+f.Intrinsic.Control.For(v.Local.iCounter,0,v.Local.sChildren.UBound,1)
+	F.Intrinsic.Control.If(V.Local.iCounter,=,0)
+		f.Intrinsic.String.Build("'{0}'",v.Local.sChildren(V.Local.iCounter).Trim, v.Local.sChildrenPool)
+	F.Intrinsic.Control.Else	
+		f.Intrinsic.String.Build("{0},'{1}'",v.Local.sChildrenPool,v.Local.sChildren(v.Local.iCounter).Trim, v.Local.sChildrenPool)
+	F.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Next(v.Local.iCounter)
+
+
+'F.Intrinsic.String.Build("Select RTRIM(PART) as PART, UM_INVENTORY, SOURCE From BOM_MSTR where Parent = '{0}' and Sequence_BOM != '0000' and Source In('P', 'J', 'C', 'G')", v.Local.sGSSPart.Trim, v.Local.sSql)
+F.Intrinsic.String.Build("Select RTRIM(PART) as PART, UM_INVENTORY, SOURCE From BOM_MSTR where Sequence_BOM != '0000' and Source In('P', 'J', 'C', 'G') and RTRIM(LTrim(PART)) in ({0})", v.local.sChildrenPool, v.Local.sSql)
+
+'F.Intrinsic.UI.Msgbox(V.Local.sSql)
+F.Data.DataTable.CreateFromSQL("BOM", "Conx", v.Local.sSql, True)
+F.Data.DataTable.AddColumn("BOM", "Missing", "String")
+'F.Data.DataTable.SetPK("BOM", "PART")
+'Check to see if any of the parts returned are not in Inventory Master
+
+F.Intrinsic.Control.CallSub(checkinventory)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdProcess_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4245_BOM_Part_Update.g2c",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdProcess_Click.End
+
+Program.Sub.cmdBrowser_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdBrowser_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'BOM Browser
+v.Local.sRet.Declare(String)
+Function.Intrinsic.UI.SetBrowserHotTypeAhead(true)
+F.Intrinsic.UI.Browser(3005, "", v.Local.sRet)
+f.Intrinsic.Control.If(v.Local.sRet, !=, "***CANCEL***")
+	'fill the form with the bom info
+	F.Intrinsic.String.Split(v.Local.sRet, "*!*", v.Local.sRet)
+	gui.Form1.txtBom.Text(v.Local.sRet(0))
+	gui.Form1.txtSuffix.Text(v.Local.sRet(1))
+	Gui.Form1.txtDesc.Text(v.Local.sRet(2))
+f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdBrowser_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4245_BOM_Part_Update.g2c",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdBrowser_Click.End
+
+Program.Sub.CheckInventory.Start
+F.Intrinsic.Control.SetErrorHandler("CheckInventory_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+v.Local.iCount.Declare(Long)
+v.Local..BulkDeclareString(sSql, sExist)
+
+'Loop and check to see if part exists
+F.Intrinsic.Control.For(v.Local.iCount, 0, v.DataTable.BOM.RowCount--, 1)
+	F.Intrinsic.String.Build("Select Part from Inventory_MSTR where Part = '{0}'", v.DataTable.BOM(v.Local.iCount).Part!FieldValTrim, v.Local.sSql)
+	F.ODBC.Connection!Conx.ExecuteAndReturn(v.Local.sSql, v.Local.sExist)
+	F.Intrinsic.Control.If(v.Local.sExist.Trim, =, "")
+		'Part not found.  Check to see if we are missing data
+		F.Intrinsic.String.Build("Select Router,Description_Router,Prod_Line, UM_Inventory, Source, Price_Current From v_Router_Header Left Join Bom_Mstr On Bom_Mstr.Part = v_router_Header.Router Where Router = '{0}'", v.DataTable.BOM(v.Local.iCount).Part!FieldValTrim, v.Local.sSql)
+		F.Data.DataTable.CreateFromSQL("Part", "Conx", v.Local.sSql, True)
+		F.Data.DataTable.SetPK("Part", "Router") 
+		F.Intrinsic.Control.If(v.DataTable.Part.RowCount, =, 0)
+			F.Data.DataTable.AddRow("Part","Router", v.DataTable.BOM(v.Local.iCount).Part!FieldValTrim, "Price_Current", 0)
+		F.Intrinsic.Control.EndIf
+		
+'		F.Data.DataTable.AddRow("Part", "Source", 
+		F.Data.DataTable.Merge("Part", "PartUpdate",False,4)
+		
+		F.Intrinsic.Control.CallSub(MissingData, "Row", v.Local.iCount)
+		'Now we have the Data lets create the Part
+'		F.Intrinsic.Control.CallSub(CreatePart,"Row", v.Local.iCount)
+		F.Data.DataTable.Close("Part")
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(v.Local.iCount)
+F.Intrinsic.Control.If(v.DataTable.PartUpdate.rowcount, >, 0)
+
+	F.Data.Dictionary.CreateFromDataTable("UMDic", "BOM", "PART", "UM_INVENTORY")
+	F.Data.Dictionary.SetDefaultReturn("UMDic", "")
+	F.Data.DataTable.FillFromDictionary("PartUpdate", "UMDic", "Router", "UM_Inventory")
+	F.Data.Dictionary.Close("UMDic")
+
+	F.Data.Dictionary.CreateFromDataTable("UMDic", "BOM", "PART", "SOURCE")
+	F.Data.Dictionary.SetDefaultReturn("UMDic", "")
+	F.Data.DataTable.FillFromDictionary("PartUpdate", "UMDic", "Router", "SOURCE")
+	F.Data.Dictionary.Close("UMDic")
+	
+	F.Data.DataTable.CreateFromSQL("ENG", "Conx", "Select RTRIM(PART) as PART, DESCRIPTION From BOM_ENG", True)
+	F.Data.Dictionary.CreateFromDataTable("Desc", "ENG", "PART", "DESCRIPTION")
+
+	F.Data.Dictionary.SetDefaultReturn("Desc", "")
+	F.Data.DataTable.FillFromDictionary("PartUpdate", "Desc", "Router", "Description_Router")
+	F.Data.Dictionary.Close("Desc")
+	F.Data.DataTable.Close("ENG")
+	
+	F.Intrinsic.Control.CallSub(createpart)
+F.Intrinsic.Control.Else
+	F.Intrinsic.UI.Msgbox("Done", "All Parts Exist")
+	F.Intrinsic.Control.CallSub(unload)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CheckInventory_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4245_BOM_Part_Update.g2c",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.CheckInventory.End
+
+Program.Sub.CreatePart.Start
+F.Intrinsic.Control.SetErrorHandler("CreatePart_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'Part = Part.BOM_Mstr
+'Rev = Part.BOM_Mstr(will need to split based on 17 for part number 3 for rev)
+'Description = Description_Router.Router_Header
+'Product_Line = Prod_Line.Router_Header
+'Unit of Measer - UM_Inventory.Bom_Mstr
+'Source = Source.Bom_Mstr
+'Price = Price_Current.Router_Header
+'If any of this information is missing a second screen will display.  All other values are blank.
+'Grid Style
+Gui.Form.GsGcMissing.AddGridviewFromDatatable("GridMissing", "PartUpdate")
+Gui.Form.GsGcMissing.SetGridviewProperty("GridMissing","Editable", "True")
+Gui.Form.GsGcMissing.SetGridviewProperty("GridMissing", "ReadOnly", "False")
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Description_Router", "Caption", "Description")
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Prod_Line", "Caption", "PL")
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "UM_Inventory", "Caption", "UM")
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Price_Current", "Caption", "Price")
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Router", "ReadOnly", True)
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Missing", "Visible", False)
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Prod_Line", "MaxWidth", 50)
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "UM_Inventory", "MaxWidth", 50)
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Price_Current", "MaxWidth", 100)
+Gui.Form.GsGcMissing.SetColumnProperty("GridMissing", "Source", "MaxWidth", 50)
+Gui.Form.GsGcMissing.MainView("GridMissing")
+Gui.Form..Show
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CreatePart_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4245_BOM_Part_Update.g2c",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.CreatePart.End
+
+Program.Sub.MissingData.Start
+F.Intrinsic.Control.SetErrorHandler("MissingData_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+v.Local..BulkDeclareString(sFields, sTemp, sFilter)
+v.Local.iCount.Declare(Long)
+
+F.Intrinsic.String.Split("Router*!*Description_Router*!*Prod_Line*!*UM_Inventory*!*Price_Current", "*!*",v.Local.sFields)
+'create view to loop through
+F.Intrinsic.String.Build("Router = '{0}'", v.DataTable.BOM(v.Args.Row).Part!FieldValTrim, v.Local.sFilter)
+F.Data.DataView.Create("PartUpdate", "Missing",22,v.Local.sFilter,"Router asc")
+F.Intrinsic.Control.For(v.Local.iCount, 0, v.Local.sFields.UBound, 1)
+	V.Local.sTemp.Set(v.Local.sFields(v.Local.iCount))
+	F.Intrinsic.Control.If(V.Local.sTemp.Trim, !=, "Price_Current")
+		F.Intrinsic.Control.If(v.DataView.PartUpdate!Missing(0).[V.Local.sTemp]!FieldValTrim,=,"")
+'		F.Intrinsic.Control.If(v.DataTable.Part(0).[V.Local.sTemp]!FieldValTrim,=,"")
+			'Set Flag for missing info
+			F.Data.DataView.SetValue("PartUpdate","Missing", 0, "Missing", "Y") 
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Else
+		F.Intrinsic.Control.If(v.DataView.PartUpdate!Missing(0).[V.Local.sTemp]!FieldValFloat,=,0)
+'		F.Intrinsic.Control.If(v.DataTable.Part(0).[V.Local.sTemp]!FieldValFloat, =, 0)
+			'Set Flag for missing info
+			F.Data.DataView.SetValue("PartUpdate","Missing", 0, "Missing", "Y")
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(v.Local.iCount)
+F.Data.DataView.Close("PartUpdate","Missing")
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("MissingData_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4245_BOM_Part_Update.g2c",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.MissingData.End
+
+Program.Sub.cmd1_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmd1_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'For those parts not in inventory add them using F.Global.Inventory.CreatePart(part, unit of measure, description, location, product line, source code, alt description 1, alt description 2, price, "NOMAINT")
+V.Local.iCount.Declare(Long)
+V.Local.sSql.Declare(String)
+V.Local.sFilter.Declare(String)
+
+V.Local.sFilter.Set("SOURCE <> 'P' and SOURCE <> 'J' and SOURCE <> 'C'  and SOURCE <> 'G'")
+F.Data.DataView.Create("PartUpdate", "Error", 22, V.Local.sFilter, "")
+
+Function.Intrinsic.Control.If(V.dataView.PartUpdate!Error.RowCount, <>, 0)
+	'print error
+	F.Intrinsic.UI.Msgbox("Invalid input for Source. Only P, J, C or G values are acceptable.", "Error")
+F.Intrinsic.Control.Else
+	Gui.Form..Visible(False)
+	F.Intrinsic.Control.For(v.Local.iCount, 0,v.DataTable.PartUpdate.RowCount--, 1)
+		F.Global.Inventory.CreatePart(v.DataTable.PartUpdate(v.Local.iCount).Router!FieldValTrim,v.DataTable.PartUpdate(v.Local.iCount).UM_Inventory!FieldValTrim, v.DataTable.PartUpdate(v.Local.iCount).Description_Router!FieldValTrim,"",v.DataTable.PartUpdate(v.Local.iCount).Prod_Line!FieldValTrim,v.DataTable.PartUpdate(v.Local.iCount).Source!FieldValTrim, "","", v.DataTable.PartUpdate(v.Local.iCount).Price_Current!FieldValTrim,"NOMAINT")
+		F.Intrinsic.String.Build("Update INVENTORY_MSTR Set WHO_CHG_LAST = '{0}' where PART = '{1}'", V.Caller.User, v.DataTable.PartUpdate(v.Local.iCount).Router!FieldValTrim, V.Local.sSql)
+		F.ODBC.Connection!Conx.Execute(V.Local.sSql)
+	f.Intrinsic.Control.Next(v.Local.iCount) 
+	F.Intrinsic.UI.Msgbox("Inventory Updated!", "Update Complete")
+	F.Intrinsic.Control.CallSub(unload)
+F.Intrinsic.Control.EndIf
+
+F.Data.DataView.Close("PartUpdate", "Error")
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmd1_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4245_BOM_Part_Update.g2c",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmd1_Click.End
+
+Program.Sub.Explode_Bom.Start
+'BN added Feb 22, 2017
+v.Local..BulkDeclareString(sBom,sReturn,sReturnArr, sSQL, sLevelReturn, sLevelReturnArr, sHold, sPartToProcess)
+v.Local..BulkDeclareLong(iCounter, iCounter2nd,iIncrement)
+v.Local.bEnd.Declare(boolean)
+v.Local.iLevel.Declare(long,1)
+
+v.Local.sBom.Set(v.Args.sBom)
+'F.ODBC.Connection!conx.OpenConnection(v.Ambient.PDSN, v.Ambient.PUser, v.Ambient.PPass)
+f.Intrinsic.String.Build("Select LTRIM(RTRIM(PART)), RTRIM(LTRIM(PARENT)) FROM BOM_MSTR where RTRIM(LTRIM(Parent)) = '{0}' and RTRIM(LTRIM(PART)) != '' AND Sequence_BOM != '0000'",v.Local.sBom,v.Local.sSQL)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSQL,V.Local.sReturn)
+
+F.Intrinsic.String.Split(V.Local.sReturn,"#$#",V.Local.sReturnArr)
+
+Function.Data.DataTable.Create("PART_LEAF")
+Function.Data.DataTable.AddColumn("PART_LEAF", "Part", "String", "N/A")
+Function.Data.DataTable.AddColumn("PART_LEAF", "Parent", "String", "N/A")
+Function.Data.DataTable.AddColumn("PART_LEAF", "Level", "long", 0)
+Function.Data.DataTable.AddRowByMap("PART_LEAF", "Parent*!*Part*!*Level", v.Local.sBom, "",0)
+
+f.Intrinsic.Control.DoUntil(v.Local.bEnd,=,"True")
+
+	v.Local.bEnd.Set(True)
+
+	Function.Data.DataTable.Create("PART_TO_PROCESS")
+	Function.Data.DataTable.AddColumn("PART_TO_PROCESS", "Part", "String", "N/A")
+	Function.Data.DataTable.AddColumn("PART_TO_PROCESS", "Parent", "String", "N/A")
+
+	f.Intrinsic.Control.For(v.Local.iCounter, 0, v.Local.sReturnArr.UBound,1)
+		
+		f.Intrinsic.String.Split(v.Local.sReturnArr(v.Local.iCounter).Trim,"*!*", v.Local.sPartToProcess)
+		
+		F.Intrinsic.Control.If(v.Local.sPartToProcess(0).Trim,<>,"")
+							
+			f.Intrinsic.String.Build("Select LTRIM(RTRIM(PART)) FROM BOM_MSTR where RTRIM(LTRIM(Parent)) = '{0}' and PART != PARENT ",v.Local.sPartToProcess(0).Trim,v.Local.sSQL)
+			f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSQL,v.Local.sLevelReturn)
+			F.Intrinsic.String.Replace(v.Local.sLevelReturn,"*!*","",v.Local.sLevelReturn)
+			F.Intrinsic.String.Split(V.Local.sLevelReturn,"#$#",V.Local.sLevelReturnArr)
+
+			f.Intrinsic.Control.For(v.Local.iCounter2nd,0,v.Local.sLevelReturnArr.UBound,1)
+				f.Intrinsic.Control.If(v.Local.sLevelReturnArr(v.Local.iCounter2nd).Trim,<>,"")
+					Function.Data.DataTable.AddRowByMap("PART_To_Process", "Part*!*Parent", v.Local.sLevelReturnArr(v.Local.iCounter2nd),v.Local.sPartToProcess(0).Trim)						
+					v.Local.bEnd.Set(False)
+				f.Intrinsic.Control.EndIf
+			f.Intrinsic.Control.Next(v.Local.iCounter2nd)	
+			
+			Function.Data.DataTable.AddRowByMap("PART_LEAF", "Part*!*Parent*!*Level", v.Local.sPartToProcess(0).Trim, v.Local.sPartToProcess(1).Trim,v.Local.iLevel)		
+				
+		F.Intrinsic.Control.EndIf	
+		
+	f.Intrinsic.Control.Next(v.Local.iCounter)
+	
+	Function.Data.DataView.Create("Part_to_Process", "Part_to_Process_DV")
+	Function.Data.DataView.ToString("Part_to_Process", "Part_to_Process_DV", "*!*", "*!*#$#", v.Local.sReturn)
+	f.Data.DataTable.Close("PART_To_Process")
+	F.Intrinsic.String.Split(V.Local.sReturn,"*!*#$#",V.Local.sReturnArr)
+	f.Intrinsic.Math.Add(v.Local.iLevel,1,v.Local.iLevel)
+
+f.Intrinsic.Control.Loop
+
+Function.Data.DataTable.AddColumn("PART_LEAF", "AutoNum", "long", 0)
+v.Local.iIncrement.Set(0)
+f.Intrinsic.Control.For(v.Local.iCounter,0, v.DataTable.PART_LEAF.RowCount--, 1)
+	f.Intrinsic.Math.Add(v.Local.iIncrement,1,v.Local.iIncrement)
+	f.Data.DataTable.SetValue("PART_LEAF", v.Local.iCounter, "AutoNum",v.Local.iIncrement)	
+f.Intrinsic.Control.Next(v.Local.iCounter)
+
+f.ODBC.Connection!conx.Execute("Delete from GCG_4245_PART_LEAF")
+Function.Data.DataTable.SaveToDB("PART_LEAF", "conx", "GCG_4245_PART_LEAF", "Autonum",128,"AutoNum@!@AutoNum*!*PART@!@PART*!*Parent@!@Parent*!*Level@!@Level")
+
+Program.Sub.Explode_Bom.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$$}$2/20/2017 11:40:10 AM$}$False
+Program.Sub.Comments.End
